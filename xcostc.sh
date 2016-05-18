@@ -81,8 +81,6 @@ reset()
 	network_get_physdev IF_WAN_NAME_tmp wan;
 	IF_WAN_NAME=${IF_WAN_NAME_tmp};
 
-    ifconfig ${IF_WAN_NAME} up txqueuelen 5 >&- 2>&-
-#    ifconfig imq0 up txqueuelen 5 >&- 2>&-
     tc qdisc del dev ${IF_WAN_NAME} root >&- 2>&-
     tc qdisc del dev ifb0 root >&- 2>&-
 #    iptables -t mangle -F
@@ -99,6 +97,7 @@ tc_class_add_htb()
     t_classid=$2
     t_rate=$3
     t_ceil=$4
+	DEVICE=$5
 
     t_quantum=$(($t_rate/$RATE_TO_QUANTUM))
 
@@ -139,10 +138,9 @@ qos_per_user()
 	IP4_ADDR="$4"
 	MASK="$5"
 
-	tc_class_add_htb 1:1 1:${MASK} ${RATE} ${CELL}
+	tc_class_add_htb 1:1 1:${MASK} ${RATE} ${CEIL} ${DEVICE}
 
-	tc filter add dev $DEVICE \
-	parent 1: prio 1 protocol ip handle ${MASK} fw flowid 1:${MASK}
+	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip handle ${MASK} fw flowid 1:${MASK}
 
 }
 
@@ -154,11 +152,9 @@ qos_per_user_filter()
 	IP4_ADDR="$4"
 	MASK="$5"
 
-	tc_class_add_htb 1:1 1:${MASK} ${RATE} ${CELL}
+	tc_class_add_htb 1:1 1:${MASK} ${RATE} ${CEIL} ${DEVICE}
 
-	tc filter add dev $DEVICE \ 
-	parent 1: prio 1 protocol ip u32 match ip dst "${IP4_ADDR}"/32 \
-	flowid 1:${MASK}
+	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip u32 match ip dst "${IP4_ADDR}"/32 flowid 1:${MASK}
 
 }
 
@@ -187,9 +183,10 @@ config_apply_section()
 	IP4_ADDR_START=$(uci get xcostc.@xcostc[${1}].start)
 	IP4_ADDR_END=$(uci get xcostc.@xcostc[${1}].end)
 	IP4_WHITE_LIST=$(uci get xcostc.@xcostc[${1}].white_ip)
-    UPLOAD_RATE="$(uci get xcostc.@xcostc[0].upload_rate)"
-    TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
+    UPLOAD_RATE=$(uci get xcostc.@xcostc[${1}].upload_rate)
+    TOTAL_RATE=$(uci get xcostc.@xcostc[${1}].total_rate)
 	CALL_FUNCTION=${2}
+	APPLY_DEVIFNAME=${3}
 
 
 	#FIXME only work on netmask /24
@@ -200,7 +197,7 @@ config_apply_section()
 	for i in $(seq ${IP4_ADDR_START} ${IP4_ADDR_END}); do
 		IP=$(printf "%s.%d" "${IP4_ADDR_PREFIX}" "${i}")
 
-		${CALL_FUNCTION} "${DEVIFNAME}" "${UPLOAD_RATE}" \
+		${CALL_FUNCTION} "${APPLY_DEVIFNAME}" "${UPLOAD_RATE}" \
 		"${TOTAL_RATE}" "${IP}" "${i}"
 	done;
 }
@@ -225,14 +222,14 @@ qos()
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
 
     tc qdisc add dev $DEVICE root handle 1: htb default 30 r2q 5
-    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE
+    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE $DEVICE
 
     if [ "$DEBUG" == "1" ]
     then
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user_filter
+	config_apply_section 0 qos_per_user "${DEVICE}"
 }
 
 qos_filter()
@@ -246,21 +243,25 @@ qos_filter()
     rate $2
 
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
-    tc qdisc add dev $DEVICE root handle 1: htb default 30 r2q 5
-    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE
+    tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
+    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE ${DEVICE}
 
     if [ "$DEBUG" == "1" ]
     then
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user_filter
+	config_apply_section 0 qos_per_user_filter "${DEVICE}"
 
 	network_get_physdev IF_LAN_NAME lan;
-	network_get_ipaddr IP4_ADDR  ${IF_LAN_NAME}
 
-	tc filter add dev  ${IF_LAN_NAME} parent 1: protocol ip prio 1 u32 \
-		match ip dst ${IF_LAN_NAME}/24 flowid 1:10 \
+	network_get_ipaddr IP4_ADDR lan
+
+	IP4_ADDR_PREFIX=${IP4_ADDR%\.*}
+	IPDST=$(printf "%s.0/24" "${IP4_ADDR_PREFIX}")
+
+	tc filter add dev ${IF_LAN_NAME} parent ffff: protocol ip prio 1 u32 \
+		match ip dst ${IPDST} flowid 1:10 \
 		action mirred egress redirect dev ifb0
 }
 
@@ -295,7 +296,7 @@ fi
 RATE_UP=$(uci get xcostc.@xcostc[0].upload_rate)
 RATE_DOWN=$(uci get xcostc.@xcostc[0].download_rate)
 
-qos ${IF_WAN_NAME} "${RATE_UP}"kbit
+qos "${IF_WAN_NAME}" "${RATE_UP}"kbit
 
-qos_filter ifb0 "$RATE_DOWN"kbit
+qos_filter "ifb0" "$RATE_DOWN"kbit
 # ---- End of file. ----
