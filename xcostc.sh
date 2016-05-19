@@ -3,8 +3,6 @@
 
 DEBUG=1
 IF_WAN_NAME='wan'
-RATE_UP=600
-RATE_DOWN=14000
 RATE_TO_QUANTUM=20
 OVERHEAD=64
 MPU=128
@@ -29,7 +27,8 @@ config_load_package()
 rate()
 {
     RATE=0
-    R_RATE=$1
+    eval "R_RATE=\$${1}"
+
     R_NUMBER=`echo "$R_RATE" | sed -e "s/[^0-9]//g"`
     R_UNIT=`echo "$R_RATE" | sed -e "s/[0-9]//g"`
 
@@ -59,6 +58,8 @@ rate()
     fi
 
     RATE="$R_RATE"
+
+	eval "${1}=${RATE}"	
 }
 
 load_modules()
@@ -75,7 +76,7 @@ load_modules()
 	insmod ifb >&- 2>&-
 }
 
-reset()
+tc_stop()
 {
 	MARK_TABLE="XCOS_TC_MARK"
 	network_get_physdev IF_WAN_NAME_tmp wan;
@@ -83,12 +84,10 @@ reset()
 
     tc qdisc del dev ${IF_WAN_NAME} root >&- 2>&-
     tc qdisc del dev ifb0 root >&- 2>&-
-#    iptables -t mangle -F
 	iptables -t mangle -F PREROUTING;
     iptables -t mangle -N ${MARK_TABLE} >&- 2>&-
 
     # For acquiring DSL data from SpeedTouch modem that is connected to WAN:
-    # ifconfig eth0.1 192.168.1.42
 }
 
 tc_class_add_htb()
@@ -175,7 +174,6 @@ config_apply_section()
 {
 	ret=$(printf "%s\n" ${1} | grep -E '^[0-9]+$')
 	if [[ ! ${ret} ]]; then
-#	if 	[[ ! ${1} =~ ^-?[0-9]+$ ]]; then
 		return 0;
 	fi
 	
@@ -183,10 +181,10 @@ config_apply_section()
 	IP4_ADDR_START=$(uci get xcostc.@xcostc[${1}].start)
 	IP4_ADDR_END=$(uci get xcostc.@xcostc[${1}].end)
 	IP4_WHITE_LIST=$(uci get xcostc.@xcostc[${1}].white_ip)
-    UPLOAD_RATE=$(uci get xcostc.@xcostc[${1}].upload_rate)
     TOTAL_RATE=$(uci get xcostc.@xcostc[${1}].total_rate)
 	CALL_FUNCTION=${2}
 	APPLY_DEVIFNAME=${3}
+	RATE=${4}
 
 
 	#FIXME only work on netmask /24
@@ -197,7 +195,7 @@ config_apply_section()
 	for i in $(seq ${IP4_ADDR_START} ${IP4_ADDR_END}); do
 		IP=$(printf "%s.%d" "${IP4_ADDR_PREFIX}" "${i}")
 
-		${CALL_FUNCTION} "${APPLY_DEVIFNAME}" "${UPLOAD_RATE}" \
+		${CALL_FUNCTION} "${APPLY_DEVIFNAME}" "${RATE}" \
 		"${TOTAL_RATE}" "${IP}" "${i}"
 	done;
 }
@@ -218,10 +216,10 @@ qos()
     fi
 
     DEVICE=$1
-    rate $2
+    RATE=$2
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
 
-    tc qdisc add dev $DEVICE root handle 1: htb default 30 r2q 5
+    tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
     tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE $DEVICE
 
     if [ "$DEBUG" == "1" ]
@@ -229,7 +227,7 @@ qos()
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user "${DEVICE}"
+	config_apply_section 0 qos_per_user "${DEVICE}" "${RATE}"
 }
 
 qos_filter()
@@ -240,7 +238,7 @@ qos_filter()
     fi
 
     DEVICE=$1
-    rate $2
+    RATE=$2
 
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
     tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
@@ -251,7 +249,7 @@ qos_filter()
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user_filter "${DEVICE}"
+	config_apply_section 0 qos_per_user_filter "${DEVICE}" "${RATE}"
 
 	network_get_physdev IF_LAN_NAME lan;
 
@@ -266,37 +264,46 @@ qos_filter()
 }
 
 # ---- Main program ----
+tc_start()
+{
+		if config_load_package "xcostc"; then
+			if [ "$DEBUG" == "1" ];	then
+				echo "Can't find configure file"
+			fi
+			exit 1;
+		fi
 
-if config_load_package "xcostc"; then
-	if [ "$DEBUG" == "1" ];	then
-		echo "Can't find configure file"
-	fi
-	exit 1;
-fi
+		load_modules
+		tc_stop
 
-load_modules
-reset
+		mangle
 
-mangle
+		RATE_UP=$(uci get xcostc.@xcostc[0].upload_rate)
+		RATE_DOWN=$(uci get xcostc.@xcostc[0].download_rate)
 
-# Acquire actual rate from SpeedTouch modem:
-# BANDWIDTH=`echo -e "root\r\npassword\r\nadsl info\r\nexit\r\n" | nc 192.168.1.254 23 | grep Bandwidth | sed -e s/[^0-9]/\ /g`
-#
-# for word in $BANDWIDTH
-# do
-#    RATE_DOWN=$RATE_UP
-#    RATE_UP=$word
-# done;
+		if [ "$DEBUG" == "1" ]
+		then
+			echo Setting up Fair NAT with $RATE_UP kbit up / $RATE_DOWN kbit down.
+		fi
+		rate RATE_UP
+		rate RATE_DOWN
 
-if [ "$DEBUG" == "1" ]
+		qos "${IF_WAN_NAME}" "${RATE_UP}"
+
+		qos_filter "ifb0" "$RATE_DOWN"
+}
+
+if [[ -z $1 ]]
 then
-    echo Setting up Fair NAT with $RATE_UP kbit up / $RATE_DOWN kbit down.
+	echo "Please enter the operation code"
+	exit 1;
+else
+	case "$1" in
+	"start")
+			tc_start
+			;;
+	"stop")
+			tc_stop
+			;;
+	esac
 fi
-
-RATE_UP=$(uci get xcostc.@xcostc[0].upload_rate)
-RATE_DOWN=$(uci get xcostc.@xcostc[0].download_rate)
-
-qos "${IF_WAN_NAME}" "${RATE_UP}"kbit
-
-qos_filter "ifb0" "$RATE_DOWN"kbit
-# ---- End of file. ----
