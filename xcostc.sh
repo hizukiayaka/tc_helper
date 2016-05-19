@@ -85,6 +85,8 @@ tc_stop()
     tc qdisc del dev ${IF_WAN_NAME} root >&- 2>&-
     tc qdisc del dev ifb0 root >&- 2>&-
 	iptables -t mangle -F PREROUTING;
+    iptables -t mangle -F ${MARK_TABLE} >&- 2>&-
+    iptables -t mangle -X ${MARK_TABLE} >&- 2>&-
     iptables -t mangle -N ${MARK_TABLE} >&- 2>&-
 
     # For acquiring DSL data from SpeedTouch modem that is connected to WAN:
@@ -195,8 +197,19 @@ config_apply_section()
 	for i in $(seq ${IP4_ADDR_START} ${IP4_ADDR_END}); do
 		IP=$(printf "%s.%d" "${IP4_ADDR_PREFIX}" "${i}")
 
-		${CALL_FUNCTION} "${APPLY_DEVIFNAME}" "${RATE}" \
-		"${TOTAL_RATE}" "${IP}" "${i}"
+		IS_IN_WHILTE_LIST=false
+
+		for n in ${IP4_WHITE_LIST}; do
+			if [[ "${IP}" == "${n}" ]]; then
+				IS_IN_WHILTE_LIST=true
+				break;
+			fi
+		done;
+
+		if [[ "${IS_IN_WHILTE_LIST}" = false ]];then
+			${CALL_FUNCTION} "${APPLY_DEVIFNAME}" "${RATE}" \
+			"${TOTAL_RATE}" "${IP}" "${i}"
+		fi
 	done;
 }
 
