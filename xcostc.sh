@@ -83,7 +83,7 @@ tc_stop()
 	IF_WAN_NAME=${IF_WAN_NAME_tmp};
 
     tc qdisc del dev ${IF_WAN_NAME} root >&- 2>&-
-    tc qdisc del dev ifb0 root >&- 2>&-
+    tc qdisc del dev br-lan root >&- 2>&-
 	iptables -t mangle -F PREROUTING;
     iptables -t mangle -F ${MARK_TABLE} >&- 2>&-
     iptables -t mangle -X ${MARK_TABLE} >&- 2>&-
@@ -134,12 +134,12 @@ tc_class_add_htb()
 qos_per_user()
 {
 	DEVICE="$1"
-	RATE="$2"
+	PER_RATE="$2"
 	CEIL="$3"
 	IP4_ADDR="$4"
 	MASK="$5"
 
-	tc_class_add_htb 1:1 1:${MASK} ${RATE} ${CEIL} ${DEVICE}
+	tc_class_add_htb 1:1 1:${MASK} ${PER_RATE} ${CEIL} ${DEVICE}
 
 	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip handle ${MASK} fw flowid 1:${MASK}
 
@@ -148,12 +148,12 @@ qos_per_user()
 qos_per_user_filter()
 {
 	DEVICE="$1"
-	RATE="$2"
+	PER_RATE="$2"
 	CEIL="$3"
 	IP4_ADDR="$4"
 	MASK="$5"
 
-	tc_class_add_htb 1:1 1:${MASK} ${RATE} ${CEIL} ${DEVICE}
+	tc_class_add_htb 1:1 1:${MASK} ${PER_RATE} ${CEIL} ${DEVICE}
 
 	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip u32 match ip dst "${IP4_ADDR}"/32 flowid 1:${MASK}
 
@@ -168,8 +168,8 @@ mangle_per_user()
 
 	iptables -t mangle -A ${MARK_TABLE} -s ${IP4_ADDR} \
 		-j MARK --set-mark ${MARK}
-#	iptables -t mangle -A ${MARK_TABLE} -d ${IP4_ADDR} \
-#		-j MARK --set-mark ${MARK}
+	iptables -t mangle -A ${MARK_TABLE} -d ${IP4_ADDR} \
+		-j MARK --set-mark ${MARK}
 }
 
 config_apply_section()
@@ -183,10 +183,13 @@ config_apply_section()
 	IP4_ADDR_START=$(uci get xcostc.@xcostc[${1}].start)
 	IP4_ADDR_END=$(uci get xcostc.@xcostc[${1}].end)
 	IP4_WHITE_LIST=$(uci get xcostc.@xcostc[${1}].white_ip)
+
     TOTAL_RATE=$(uci get xcostc.@xcostc[${1}].total_rate)
+	rate TOTAL_RATE
+
 	CALL_FUNCTION=${2}
 	APPLY_DEVIFNAME=${3}
-	RATE=${4}
+	PER_RATE=${4}
 
 
 	#FIXME only work on netmask /24
@@ -207,7 +210,7 @@ config_apply_section()
 		done;
 
 		if [[ "${IS_IN_WHILTE_LIST}" = false ]];then
-			${CALL_FUNCTION} "${APPLY_DEVIFNAME}" "${RATE}" \
+			${CALL_FUNCTION} "${APPLY_DEVIFNAME}" "${PER_RATE}" \
 			"${TOTAL_RATE}" "${IP}" "${i}"
 		fi
 	done;
@@ -229,8 +232,11 @@ qos()
     fi
 
     DEVICE=$1
-    RATE=$2
+    PER_RATE=$2
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
+	rate TOTAL_RATE
+
+	echo Setting up qos with $PER_RATE bit up / $TOTAL_RATE bit down.
 
     tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
     tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE $DEVICE
@@ -240,7 +246,7 @@ qos()
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user "${DEVICE}" "${RATE}"
+	config_apply_section 0 qos_per_user "${DEVICE}" "${PER_RATE}"
 }
 
 qos_filter()
@@ -251,9 +257,13 @@ qos_filter()
     fi
 
     DEVICE=$1
-    RATE=$2
+    PER_RATE=$2
 
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
+	rate TOTAL_RATE
+
+	echo Setting up qos filter with $PER_RATE bit up / $TOTAL_RATE bit down.
+
     tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
     tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE ${DEVICE}
 
@@ -262,7 +272,7 @@ qos_filter()
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user_filter "${DEVICE}" "${RATE}"
+	config_apply_section 0 qos_per_user_filter "${DEVICE}" "${PER_RATE}"
 
 	network_get_physdev IF_LAN_NAME lan;
 
@@ -271,9 +281,9 @@ qos_filter()
 	IP4_ADDR_PREFIX=${IP4_ADDR%\.*}
 	IPDST=$(printf "%s.0/24" "${IP4_ADDR_PREFIX}")
 
-	tc filter add dev ${IF_LAN_NAME} parent ffff: protocol ip prio 1 u32 \
-		match ip dst ${IPDST} flowid 1:10 \
-		action mirred egress redirect dev ifb0
+#	tc filter add dev ${IF_LAN_NAME} parent ffff: protocol ip prio 1 u32 \
+#		match ip dst ${IPDST} flowid 1:10 \
+#		action mirred egress redirect dev ifb0
 }
 
 # ---- Main program ----
@@ -300,10 +310,11 @@ tc_start()
 		fi
 		rate RATE_UP
 		rate RATE_DOWN
+			echo Setting up Fair NAT with $RATE_UP bit up / $RATE_DOWN bit down.
 
-		qos "${IF_WAN_NAME}" "${RATE_UP}"
+		qos "${IF_WAN_NAME}" "$RATE_UP"
 
-		qos_filter "ifb0" "$RATE_DOWN"
+		qos_filter "br-lan" "$RATE_DOWN"
 }
 
 if [[ -z $1 ]]
