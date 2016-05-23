@@ -2,7 +2,9 @@
 . /lib/functions/network.sh;
 
 DEBUG=1
+SHARING_BANDWIDTH=1
 IF_WAN_NAME='wan'
+IF_LAN_NAME='br-lan'
 RATE_TO_QUANTUM=20
 OVERHEAD=64
 MPU=128
@@ -82,8 +84,8 @@ tc_stop()
 	network_get_physdev IF_WAN_NAME_tmp wan;
 	IF_WAN_NAME=${IF_WAN_NAME_tmp};
 
-    tc qdisc del dev ${IF_WAN_NAME} root >&- 2>&-
-    tc qdisc del dev br-lan root >&- 2>&-
+    tc qdisc del dev "${IF_WAN_NAME}" root >&- 2>&-
+	tc qdisc del dev "${IF_LAN_NAME}" root >&- 2>&-
 	iptables -t mangle -F PREROUTING;
     iptables -t mangle -F ${MARK_TABLE} >&- 2>&-
     iptables -t mangle -X ${MARK_TABLE} >&- 2>&-
@@ -137,11 +139,15 @@ qos_per_user()
 	PER_RATE="$2"
 	CEIL="$3"
 	IP4_ADDR="$4"
-	MASK="$5"
+	MARK="$5"
 
-	tc_class_add_htb 1:1 1:${MASK} ${PER_RATE} ${CEIL} ${DEVICE}
+	if [[ "${SHARING_BANDWIDTH}" == 1 ]]; then
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} ${DEVICE}
+	else
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} ${DEVICE}
+	fi
 
-	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip handle ${MASK} fw flowid 1:${MASK}
+	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip handle ${MARK} fw flowid 1:${MARK}
 
 }
 
@@ -151,11 +157,19 @@ qos_per_user_filter()
 	PER_RATE="$2"
 	CEIL="$3"
 	IP4_ADDR="$4"
-	MASK="$5"
+	MARK="$5"
+	MARK_IN_HEX=$(printf "%x" "${MARK}")
 
-	tc_class_add_htb 1:1 1:${MASK} ${PER_RATE} ${CEIL} ${DEVICE}
+	SUBNET_NUMBER="20"
 
-	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip u32 match ip dst "${IP4_ADDR}"/32 flowid 1:${MASK}
+	if [[ "${SHARING_BANDWIDTH}" == 1 ]]; then
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} ${DEVICE}
+	else
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} ${DEVICE}
+	fi
+
+	tc filter add dev "${DEVICE}" protocol ip parent 1: prio 100 u32 ht \
+	 ${SUBNET_NUMBER}:${MARK_IN_HEX}:  match ip dst "${IP4_ADDR}" flowid 1:${MARK}
 
 }
 
@@ -168,8 +182,8 @@ mangle_per_user()
 
 	iptables -t mangle -A ${MARK_TABLE} -s ${IP4_ADDR} \
 		-j MARK --set-mark ${MARK}
-	iptables -t mangle -A ${MARK_TABLE} -d ${IP4_ADDR} \
-		-j MARK --set-mark ${MARK}
+#	iptables -t mangle -A ${MARK_TABLE} -d ${IP4_ADDR} \
+#		-j MARK --set-mark ${MARK}
 }
 
 config_apply_section()
@@ -258,6 +272,7 @@ qos_filter()
 
     DEVICE=$1
     PER_RATE=$2
+	SUBNET_NUMBER="20"
 
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
 	rate TOTAL_RATE
@@ -272,14 +287,21 @@ qos_filter()
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user_filter "${DEVICE}" "${PER_RATE}"
-
 	network_get_physdev IF_LAN_NAME lan;
 
 	network_get_ipaddr IP4_ADDR lan
 
 	IP4_ADDR_PREFIX=${IP4_ADDR%\.*}
 	IPDST=$(printf "%s.0/24" "${IP4_ADDR_PREFIX}")
+
+	tc filter add dev ${IF_LAN_NAME} parent 1:0 prio 10 protocol ip u32
+	tc filter add dev ${IF_LAN_NAME} parent 1:0 prio 10 handle ${SUBNET_NUMBER}: protocol ip u32 divisor 256
+
+	tc filter add dev ${IF_LAN_NAME} parent 1:0 protocol ip prio 10 u32 ht 800:: \
+	match ip dst ${IPDST} \
+	hashkey mask 0x000000ff at 16 link ${SUBNET_NUMBER}: ;
+
+	config_apply_section 0 qos_per_user_filter "${DEVICE}" "${PER_RATE}"
 
 #	tc filter add dev ${IF_LAN_NAME} parent ffff: protocol ip prio 1 u32 \
 #		match ip dst ${IPDST} flowid 1:10 \
@@ -312,9 +334,9 @@ tc_start()
 		rate RATE_DOWN
 			echo Setting up Fair NAT with $RATE_UP bit up / $RATE_DOWN bit down.
 
-		qos "${IF_WAN_NAME}" "$RATE_UP"
+		qos "${IF_WAN_NAME}" "${RATE_UP}"
 
-		qos_filter "br-lan" "$RATE_DOWN"
+		qos_filter "${IF_LAN_NAME}" "${RATE_DOWN}"
 }
 
 if [[ -z $1 ]]
