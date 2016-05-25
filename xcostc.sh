@@ -2,7 +2,7 @@
 . /lib/functions/network.sh;
 
 DEBUG=1
-SHARING_BANDWIDTH=1
+SHARING_BANDWIDTH=0
 IF_WAN_NAME='wan'
 IF_LAN_NAME='br-lan'
 RATE_TO_QUANTUM=20
@@ -86,6 +86,11 @@ tc_stop()
 
     tc qdisc del dev "${IF_WAN_NAME}" root >&- 2>&-
 	tc qdisc del dev "${IF_LAN_NAME}" root >&- 2>&-
+	tc qdisc del dev "ifb0" root
+
+	tc qdisc del dev "ifb0" ingress
+	tc qdisc add dev "ifb0" ingress
+
 	iptables -t mangle -F PREROUTING;
     iptables -t mangle -F ${MARK_TABLE} >&- 2>&-
     iptables -t mangle -X ${MARK_TABLE} >&- 2>&-
@@ -153,7 +158,7 @@ qos_per_user()
 
 qos_per_user_filter()
 {
-	DEVICE="$1"
+	TARGET_DEVICE="$1"
 	PER_RATE="$2"
 	CEIL="$3"
 	IP4_ADDR="$4"
@@ -163,13 +168,14 @@ qos_per_user_filter()
 	SUBNET_NUMBER="20"
 
 	if [[ "${SHARING_BANDWIDTH}" == 1 ]]; then
-		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} ${DEVICE}
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} "ifb0"
 	else
-		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} ${DEVICE}
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} "ifb0"
 	fi
 
-	tc filter add dev "${DEVICE}" protocol ip parent 1: prio 100 u32 ht \
-	 ${SUBNET_NUMBER}:${MARK_IN_HEX}:  match ip dst "${IP4_ADDR}" flowid 1:${MARK}
+	tc filter add dev ${TARGET_DEVICE} parent ffff: protocol ip prio 10 handle ${MARK} fw \
+	  flowid 1:${MARK} \
+	  action mirred egress redirect dev ifb0
 
 }
 
@@ -182,8 +188,8 @@ mangle_per_user()
 
 	iptables -t mangle -A ${MARK_TABLE} -s ${IP4_ADDR} \
 		-j MARK --set-mark ${MARK}
-#	iptables -t mangle -A ${MARK_TABLE} -d ${IP4_ADDR} \
-#		-j MARK --set-mark ${MARK}
+	iptables -t mangle -A ${MARK_TABLE} -d ${IP4_ADDR} \
+		-j MARK --set-mark ${MARK}
 }
 
 config_apply_section()
@@ -252,7 +258,7 @@ qos()
 
 	echo Setting up qos with $PER_RATE bit up / $TOTAL_RATE bit down.
 
-    tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
+    tc qdisc add dev ${DEVICE} root handle 1: htb default 1 r2q 5
     tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE $DEVICE
 
     if [ "$DEBUG" == "1" ]
@@ -270,7 +276,7 @@ qos_filter()
         echo --------
     fi
 
-    DEVICE=$1
+    TARGET_DEVICE=$1
     PER_RATE=$2
 	SUBNET_NUMBER="20"
 
@@ -279,8 +285,8 @@ qos_filter()
 
 	echo Setting up qos filter with $PER_RATE bit up / $TOTAL_RATE bit down.
 
-    tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
-    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE ${DEVICE}
+    tc qdisc add dev ifb0 root handle 1: htb default 1 r2q 5
+    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE "ifb0"
 
     if [ "$DEBUG" == "1" ]
     then
@@ -294,14 +300,13 @@ qos_filter()
 	IP4_ADDR_PREFIX=${IP4_ADDR%\.*}
 	IPDST=$(printf "%s.0/24" "${IP4_ADDR_PREFIX}")
 
-	tc filter add dev ${IF_LAN_NAME} parent 1:0 prio 10 protocol ip u32
-	tc filter add dev ${IF_LAN_NAME} parent 1:0 prio 10 handle ${SUBNET_NUMBER}: protocol ip u32 divisor 256
+	ifconfig ifb0 up
 
-	tc filter add dev ${IF_LAN_NAME} parent 1:0 protocol ip prio 10 u32 ht 800:: \
-	match ip dst ${IPDST} \
-	hashkey mask 0x000000ff at 16 link ${SUBNET_NUMBER}: ;
+	tc qdisc del dev ${TARGET_DEVICE} ingress
+	tc qdisc add dev ${TARGET_DEVICE} ingress
 
-	config_apply_section 0 qos_per_user_filter "${DEVICE}" "${PER_RATE}"
+	config_apply_section 0 qos_per_user_filter "${TARGET_DEVICE}" "${PER_RATE}"
+
 
 #	tc filter add dev ${IF_LAN_NAME} parent ffff: protocol ip prio 1 u32 \
 #		match ip dst ${IPDST} flowid 1:10 \
@@ -336,7 +341,7 @@ tc_start()
 
 		qos "${IF_WAN_NAME}" "${RATE_UP}"
 
-		qos_filter "${IF_LAN_NAME}" "${RATE_DOWN}"
+		qos_filter "${IF_WAN_NAME}" "${RATE_DOWN}"
 }
 
 if [[ -z $1 ]]
