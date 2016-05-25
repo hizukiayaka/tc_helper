@@ -135,25 +135,25 @@ tc_class_add_htb()
 # ---- Generic: ----
 qos_per_user()
 {
-	DEVICE="$1"
+	TARGET_DEVICE="$1"
 	PER_RATE="$2"
 	CEIL="$3"
 	IP4_ADDR="$4"
 	MARK="$5"
 
 	if [[ "${SHARING_BANDWIDTH}" == 1 ]]; then
-		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} ${DEVICE}
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} ${TARGET_DEVICE}
 	else
-		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} ${DEVICE}
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} ${TARGET_DEVICE}
 	fi
 
-	tc filter add dev "${DEVICE}" parent 1: prio 1 protocol ip handle ${MARK} fw flowid 1:${MARK}
+	tc filter add dev "${TARGET_DEVICE}" parent 1: prio 1 protocol ip handle ${MARK} fw flowid 1:${MARK}
 
 }
 
 qos_per_user_filter()
 {
-	DEVICE="$1"
+	TARGET_DEVICE="$1"
 	PER_RATE="$2"
 	CEIL="$3"
 	IP4_ADDR="$4"
@@ -163,12 +163,12 @@ qos_per_user_filter()
 	SUBNET_NUMBER="20"
 
 	if [[ "${SHARING_BANDWIDTH}" == 1 ]]; then
-		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} ${DEVICE}
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${CEIL} ${TARGET_DEVICE}
 	else
-		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} ${DEVICE}
+		tc_class_add_htb 1:1 1:${MARK} ${PER_RATE} ${PER_RATE} ${TARGET_DEVICE}
 	fi
 
-	tc filter add dev "${DEVICE}" protocol ip parent 1: prio 100 u32 ht \
+	tc filter add dev "${TARGET_DEVICE}" protocol ip parent 1: prio 100 u32 ht \
 	 ${SUBNET_NUMBER}:${MARK_IN_HEX}:  match ip dst "${IP4_ADDR}" flowid 1:${MARK}
 
 }
@@ -245,22 +245,22 @@ qos()
         echo --------
     fi
 
-    DEVICE=$1
+    TARGET_DEVICE=$1
     PER_RATE=$2
     TOTAL_RATE="$(uci get xcostc.@xcostc[0].total_rate)"
 	rate TOTAL_RATE
 
 	echo Setting up qos with $PER_RATE bit up / $TOTAL_RATE bit down.
 
-    tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
-    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE $DEVICE
+    tc qdisc add dev ${TARGET_DEVICE} root handle 1: htb default 30 r2q 1
+    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE $TARGET_DEVICE
 
     if [ "$DEBUG" == "1" ]
     then
         echo --------
     fi
 
-	config_apply_section 0 qos_per_user "${DEVICE}" "${PER_RATE}"
+	config_apply_section 0 qos_per_user "${TARGET_DEVICE}" "${PER_RATE}"
 }
 
 qos_filter()
@@ -270,7 +270,7 @@ qos_filter()
         echo --------
     fi
 
-    DEVICE=$1
+    TARGET_DEVICE=$1
     PER_RATE=$2
 	SUBNET_NUMBER="20"
 
@@ -279,8 +279,8 @@ qos_filter()
 
 	echo Setting up qos filter with $PER_RATE bit up / $TOTAL_RATE bit down.
 
-    tc qdisc add dev ${DEVICE} root handle 1: htb default 30 r2q 5
-    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE ${DEVICE}
+    tc qdisc add dev ${TARGET_DEVICE} root handle 1: htb default 1 r2q 1
+    tc_class_add_htb 1: 1:1 $TOTAL_RATE $TOTAL_RATE ${TARGET_DEVICE}
 
     if [ "$DEBUG" == "1" ]
     then
@@ -301,7 +301,7 @@ qos_filter()
 	match ip dst ${IPDST} \
 	hashkey mask 0x000000ff at 16 link ${SUBNET_NUMBER}: ;
 
-	config_apply_section 0 qos_per_user_filter "${DEVICE}" "${PER_RATE}"
+	config_apply_section 0 qos_per_user_filter "${TARGET_DEVICE}" "${PER_RATE}"
 
 #	tc filter add dev ${IF_LAN_NAME} parent ffff: protocol ip prio 1 u32 \
 #		match ip dst ${IPDST} flowid 1:10 \
