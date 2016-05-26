@@ -1,0 +1,144 @@
+/etc/init.d/dropbear start xcossshctrl
+
+
+tc qdisc add dev ifb0 root handle 1: prio 
+tc qdisc add dev ifb0 parent 1:1 handle 10: sfq
+tc qdisc add dev ifb0 parent 1:2 handle 20: tbf rate 20kbit buffer 1600 limit 3000
+tc qdisc add dev ifb0 parent 1:3 handle 30: sfq                                
+tc filter add dev ifb0 protocol ip pref 1 parent 1: handle 1 fw classid 1:1
+tc filter add dev ifb0 protocol ip pref 2 parent 1: handle 2 fw classid 1:2
+
+tc qdisc add dev eth0 ingress
+tc filter add dev eth0 parent ffff: protocol ip prio 10 u32 \
+  match u32 0 0 flowid 1:1 \
+  action mirred egress redirect dev ifb0
+
+tc filter add dev eth0 parent ffff: protocol ip prio 10 handle 20 fw \
+  flowid 1:20 \
+  action mirred egress redirect dev ifb0
+
+
+
+tc qdisc del dev eth0 root
+
+tc qdisc add dev eth0 root handle 1 hfsc default 1
+tc filter add dev eth0 parent 1 handle 1 protocol all flow map key \
+ nfct-src and 0xff divisor 256
+ 
+tc class add dev eth0 parent 1:  classid 1:1  hfsc sc rate 100000kbit ul rate 100000kbit
+
+
+tc class add dev eth0 parent 1:  classid 1:20  hfsc sc rate 50000kbit ul rate 50000kbit
+
+
+
+tc qdisc add dev eth0 root handle 1 hfsc default 20
+ 
+tc class add dev eth0 parent 1:  classid 1:1  hfsc sc rate 100000kbit ul rate 100000kbit
+
+tc filter add dev eth0 parent 1: handle 10 protocol all flow match nfct-src \
+192.168.20.106
+
+
+tc class add dev eth0 parent 1:  classid 1:20  hfsc sc rate 50000kbit ul rate 50000kbit
+
+tc qdisc add dev eth0 parent 1:20 handle 20: fq_codel
+tc filter add dev eth0 parent 20: handle 11 protocol all flow hash keys nfct-src divisor 256
+
+
+
+=====not work in the download=====
+tc qdisc del dev eth0 root
+tc qdisc del dev eth0 ingress
+
+tc qdisc del dev ifb0 root
+tc qdisc del dev br-lan root
+
+tc qdisc add dev eth0 root handle 1 hfsc default 1
+ 
+tc class add dev eth0  parent 1: classid 1:1  hfsc sc \
+ rate 32000kbit ul rate 32000kbit
+tc qdisc add dev eth0  parent 1:1 handle 11: fq_codel
+tc filter add dev eth0  parent 11: handle 11 protocol all flow hash keys \
+ nfct-src divisor 256
+
+ip link set ifb0 up
+
+tc qdisc add dev ifb0 root handle 1 hfsc default 1
+tc class add dev ifb0  parent 1:  classid 1:1 hfsc sc rate \
+ 22000kbit ul rate 22000kbit
+tc qdisc add dev ifb0  parent 1:1 handle 12: fq_codel
+
+tc qdisc add dev eth0 ingress
+
+tc filter add dev eth0  parent ffff: handle 12 protocol all flow hash keys \
+ nfct-dst divisor 256 action mirred egress redirect dev ifb0
+
+
+=====work in both side=========
+tc qdisc del dev eth0 root
+tc qdisc del dev eth0 ingress
+tc qdisc add dev eth0 ingress
+tc qdisc del dev br-lan root
+
+tc qdisc add dev eth0 root handle 1 hfsc default 257
+ 
+tc class add dev eth0  parent 1: classid 1:257  hfsc sc \
+ rate 32000kbit ul rate 32000kbit
+tc qdisc add dev eth0  parent 1:257 handle 257: fq_codel
+tc filter add dev eth0  parent 257: handle 257 protocol all flow hash keys \
+ nfct-src divisor 256
+
+tc class add dev eth0  parent 1: classid 1:1 hfsc sc rate \
+ 100000kbit ul rate 100000kbit
+tc filter add dev eth0 parent 1: protocol arp prio 2 u32 match u32 0 0 flowid 1:1
+
+tc qdisc add dev br-lan root handle 1 hfsc default 257
+tc class add dev br-lan  parent 1: classid 1:257 hfsc sc rate \
+ 30000kbit ul rate 30000kbit
+tc qdisc add dev br-lan  parent 1:257 handle 257: fq_codel
+tc filter add dev br-lan  parent 257: handle 257 protocol all flow hash keys \
+ dst divisor 256
+
+tc class add dev br-lan  parent 1: classid 1:1 hfsc sc rate \
+ 100000kbit ul rate 100000kbit
+
+tc filter add dev br-lan parent 1: prio 10 protocol ip u32 \
+ match ip dst 192.168.20.92 flowid 1:1
+tc filter add dev br-lan parent 1: protocol arp prio 2 u32 match u32 0 0 flowid 1:1
+
+=====work in both side=========
+tc qdisc del dev eth0 root
+tc qdisc del dev eth0 ingress
+tc qdisc add dev eth0 ingress
+tc qdisc del dev br-lan root
+tc qdisc del dev ifb0 root
+
+tc qdisc add dev eth0 root handle 1 hfsc default 257
+ 
+tc class add dev eth0  parent 1: classid 1:257  hfsc sc \
+ rate 32000kbit ul rate 32000kbit
+tc qdisc add dev eth0  parent 1:257 handle 257: fq_codel
+tc filter add dev eth0  parent 257: handle 257 protocol all flow hash keys \
+ nfct-src divisor 256
+
+tc class add dev eth0  parent 1: classid 1:1 hfsc sc rate \
+ 100000kbit ul rate 100000kbit
+tc filter add dev eth0 parent 1: protocol arp prio 2 u32 match u32 0 0 flowid 1:1
+
+tc qdisc add dev br-lan root handle 1 hfsc default 257
+tc class add dev br-lan  parent 1: classid 1:257 hfsc sc rate \
+ 9000kbit ul rate 9000kbit
+tc qdisc add dev br-lan  parent 1:257 handle 257: fq_codel
+tc filter add dev br-lan  parent 257: handle 257 protocol all flow map \
+ key dst addend -192.168.20.0 divisor 256
+tc class add dev br-lan  parent 1: classid 1:1 hfsc sc rate \
+ 10000kbit ul rate 10000kbit
+
+tc filter add dev br-lan parent 1: prio 10 protocol ip u32 \
+ match ip dst 192.168.20.1 flowid 1:1
+tc filter add dev br-lan parent 1: protocol arp prio 2 u32 match u32 0 0 flowid 1:1
+
+
+
+
