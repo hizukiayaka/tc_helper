@@ -1,5 +1,6 @@
-#include "common.h"
 #include <uci.h>
+#include "common.h"
+#include "tc.h"
 
 static struct uci_context *c = NULL;
 static struct uci_package *p = NULL;
@@ -20,15 +21,8 @@ void config_cleanup() {
 	uci_free_context(c);
 }
 
-void *config_find_interface(uint8_t *ifname) {
-	struct uci_section *s = NULL;
-
-	s = uci_lookup_section(c, p, ifname);
-
-	return s;
-}
-
-uint8_t *config_find_option(struct uci_section *s, uint8_t *name){
+uint8_t *config_find_option(struct uci_section *s, uint8_t *name)
+{
 	uint8_t *option;
 
 	option = uci_lookup_option_string(c, s, name);	
@@ -57,4 +51,41 @@ uint8_t config_find_list(struct uci_section *s, uint8_t *name, uint8_t **list){
 
 	return length;
 
+}
+
+bool load_tc_if_config(struct uci_section *s, void *data)
+{
+	struct tc_if_config *config = (struct tc_if_config *)data;
+
+	config->out_if = config_find_option(s, "outside_dev");
+	config->in_if = config_find_option(s, "inside_dev");
+	config->ip4_start = config_find_option(s, "start");
+	config->ip4_end = config_find_option(s, "end");
+	scanf(config_find_option(s, "download_rate"), "%d", 
+			config->download_rate);
+	scanf(config_find_option(s, "download_persent"), "%d", 
+			config->download_persent);
+
+	config_find_list(s, "white_ip", config->ip4_white_list);
+}
+
+
+void xcostc_load_config()
+{
+	struct uci_section *s;
+	struct uci_element *e;
+	uint8_t *ret;
+
+	config_load_packge(PACKAGE_NAME);
+
+	/* FIXME the list is not implement yet, only the last
+	 * section would be applied.
+	 * */
+	uci_foreach_element(&p->sections, e)
+	{
+		s = uci_to_section(e);
+
+		printf("%s\n", ret);
+	}
+	config_cleanup();
 }
