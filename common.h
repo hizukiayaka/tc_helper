@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "libubox/list.h"
 
 #ifdef DEBUG
 #define PDEBUG(fmt, args...)	fprintf(stderr, fmt, ## args)

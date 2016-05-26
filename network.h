@@ -1,5 +1,7 @@
 #ifndef _NETWORK_H_
 #define _NETWORK_H_
+#include <netinet/ether.h>
+#include <net/ethernet.h>
 
 int32_t network_ipv4_subnet(char *if_name);
 

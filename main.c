@@ -1,8 +1,9 @@
 #include "common.h"
-#include "read_config.h"
+#include "options.h"
 #include "tc.h"
 
 int main(int argc, char **argv)
 {
-	xcostc_load_config();
+	LIST_HEAD(config_list);
+	xcostc_load_config(&config_list);
 }
