@@ -19,7 +19,8 @@ put_value(void *ptr, void *val, int elem_size, bool is_list)
 			return false;
 
 		memcpy(copy, val, elem_size);
-		list_add_tail((struct list_head *)copy, (struct list_head *)ptr);
+		list_add_tail((struct list_head *)copy, 
+				(struct list_head *)ptr);
 		return true;
 	}
 
@@ -56,9 +57,12 @@ bool config_load_packge(uint8_t *package_name) {
 		return true;
 	
 	return false;
-
 }
 
+/* If you don't duplicate the option strings returned from
+ * API, you shouldn't call this function when you still use
+ * those variables
+ */
 void config_cleanup() {
 	uci_free_context(c);
 }
@@ -94,6 +98,8 @@ uint8_t config_load_mac_list(struct uci_section *s, uint8_t *name, void *list){
 	struct uci_element *e;
 
 	o = uci_lookup_option(c, s, name);	
+	if (NULL == o)
+		return 0;
 
 	if (UCI_TYPE_LIST == o->type)
 	{
@@ -110,28 +116,51 @@ uint8_t config_load_mac_list(struct uci_section *s, uint8_t *name, void *list){
 bool load_tc_if_config(struct uci_section *s, void *data)
 {
 	struct tc_if_config *config = (struct tc_if_config *)data;
+	uint8_t *ret = NULL;
 
 	config->out_if = config_find_option(s, "outside_dev");
 	config->in_if = config_find_option(s, "inside_dev");
-	scanf(config_find_option(s, "start"), "%d", 
-		config->ip4_start);
-	scanf(config_find_option(s, "end"), "%d", 
-		config->ip4_end);
-	scanf(config_find_option(s, "download_rate"), "%d", 
-		config->download_rate);
-	scanf(config_find_option(s, "download_percent"), "%d", 
-		config->download_percent);
 
-	config_load_mac_list(s, "white_ip", config->ip4_white_list);
+	ret = config_find_option(s, "start");
+	if(NULL != ret)
+		sscanf(ret, "%d", &config->ip4_start);
+
+	ret = config_find_option(s, "end");
+	if(NULL != ret)
+		sscanf(ret, "%d", &config->ip4_end);
+
+	ret = config_find_option(s, "download_rate");
+	if(NULL != ret)
+		sscanf(ret, "%d", &config->download_rate);
+
+	ret = config_find_option(s, "download_percent");
+	if(NULL != ret)
+		sscanf(ret, "%d", &config->download_percent);
+
+	ret = config_find_option(s, "upload_rate");
+	if(NULL != ret)
+		sscanf(ret, "%d", &config->upload_rate);
+
+	ret = config_find_option(s, "upload_percent");
+	if(NULL != ret)
+		sscanf(ret, "%d", &config->upload_percent);
+
+
+	INIT_LIST_HEAD(&config->white_list);
+	config_load_mac_list(s, "white_mac", &config->white_list);
 
 	if (NULL == config->out_if || NULL == config->in_if
 	   || 0 >= config->ip4_start || 0 >= config->ip4_end)
 		return false;
 
 	if (0 >= config->download_rate)
-		config->download_rate = 100;
+		config->download_rate = 1000;
 	if (0 >= config->upload_rate)
-		config->upload_rate = 100;
+		config->upload_rate = 1000;
+	if (0 >= config->download_percent)
+		config->download_percent = 100;
+	if (0 >= config->upload_percent)
+		config->upload_percent = 100;
 
 	return true;
 }
@@ -142,24 +171,19 @@ bool xcostc_load_config(void *data)
 	uint8_t ret;
 	struct uci_section *s;
 	struct uci_element *e;
-	struct tc_if_config *config;
+	struct tc_if_config config;
 
 	if (!config_load_packge(PACKAGE_NAME))
 		return false;
 
-	/* FIXME the list is not implement yet, only the last
-	 * section would be applied.
-	 * */
 	uci_foreach_element(&p->sections, e)
 	{
 		s = uci_to_section(e);
 
-		config = malloc(sizeof(struct tc_if_config));
-		memset(config, 0, sizeof(struct tc_if_config));
-		if (load_tc_if_config(s, config))
-			put_value(data, config, sizeof(config), true);
-		else
-			free(config);
+		memset(&config, 0, sizeof(struct tc_if_config));
+
+		if (load_tc_if_config(s, &config)) 
+			put_value(data, &config, 
+				sizeof(struct tc_if_config), true);
 	}
-	config_cleanup();
 }

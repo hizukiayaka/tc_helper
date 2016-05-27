@@ -17,9 +17,9 @@ struct tc_if_config {
 	uint8_t ip4_end;
 	uint8_t upload_percent;
 	uint8_t download_percent;
-	uint16_t upload_rate;
-	uint16_t download_rate;
-	struct list_head *ip4_white_list;
+	uint32_t upload_rate;
+	uint32_t download_rate;
+	struct list_head white_list;
 };
 
 bool config_load_packge(uint8_t *package_name);
