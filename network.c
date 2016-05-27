@@ -36,8 +36,7 @@ int32_t network_ipv4_subnet(char *if_name){
 
 		family = ifa->ifa_addr->sa_family;
 		if (family == AF_INET) {
-			ret = strcmp(ifa->ifa_name, if_name);
-			if(0 != ret)
+			if (0 != strcmp(ifa->ifa_name, if_name))
 				continue;
 			/* FIXME only work for the /24 netmask */
 			inet_aton("255.255.0.255", &mask);
@@ -60,7 +59,7 @@ int32_t network_ipv4_subnet(char *if_name){
 
 }
 
-bool network_ipv4_prefix(uint8_t *if_name, uint8_t *ipv4_prefix){
+bool network_ipv4_prefix(uint8_t *if_name, uint8_t **ipv4_prefix){
 	struct ifaddrs *ifaddr, *ifa;
 	struct in_addr addr;
 	struct sockaddr_in *ipv4_addr;
@@ -99,7 +98,7 @@ bool network_ipv4_prefix(uint8_t *if_name, uint8_t *ipv4_prefix){
 				& ipv4_mask->sin_addr.s_addr;
 
 			
-			ipv4_prefix = inet_ntoa(addr);
+			*ipv4_prefix = inet_ntoa(addr);
 			freeifaddrs(ifaddr);
 
 			return true;
