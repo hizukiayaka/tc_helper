@@ -76,9 +76,7 @@ int8_t tc_add_exception(void *data)
 	/* FIXME this way only work for the download traffic control,
 	 * as we do that in the lan side
 	 */
-	head = &config->white_list;
-
-	list_for_each_entry_safe(ptr, tmp, head, list) {
+	list_for_each_entry_safe(ptr, tmp, &config->white_list, list) {
 		mac = &(ptr->mac);
 		EXEC_STRING(
 		"tc filter add dev %s parent 1: protocol ip prio 3 u32 match u16 0x0800 0xFFFF at -2  \

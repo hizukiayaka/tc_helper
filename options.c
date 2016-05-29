@@ -171,7 +171,7 @@ bool xcostc_load_config(void *data)
 	uint8_t ret;
 	struct uci_section *s;
 	struct uci_element *e;
-	struct tc_if_config config;
+	struct tc_if_config *config;
 
 	if (!config_load_packge(PACKAGE_NAME))
 		return false;
@@ -179,11 +179,12 @@ bool xcostc_load_config(void *data)
 	uci_foreach_element(&p->sections, e)
 	{
 		s = uci_to_section(e);
+		config = malloc(sizeof(struct tc_if_config));
+		memset(config, 0, sizeof(struct tc_if_config));
 
-		memset(&config, 0, sizeof(struct tc_if_config));
-
-		if (load_tc_if_config(s, &config)) 
-			put_value(data, &config, 
-				sizeof(struct tc_if_config), true);
+		if (load_tc_if_config(s, config)) 
+			list_add_tail((struct list_head *)config, (struct list_head *)data);
+		else
+			free(config);
 	}
 }
