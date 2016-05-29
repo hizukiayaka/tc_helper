@@ -14,9 +14,19 @@ int main(int argc, char **argv)
 		tc_init(data);
 		tc_add_exception(data);
 	}
+
+	/* Free the allocated memory*/
+	list_for_each_entry_safe(data, tmp, &config_list, list)
+	{
+		struct xcostc_mac *addr, *addr_tmp;
+		list_for_each_entry_safe(addr, addr_tmp, 
+			&data->white_list, list) {
+			free(addr);
+		}
+	}
 	list_for_each_safe(cur, nex_tmp, &config_list)
 	{
-		/* FIXME free the sub-list*/
+
 		free(cur);	
 	}
 
