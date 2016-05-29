@@ -67,13 +67,9 @@ void config_cleanup() {
 	uci_free_context(c);
 }
 
-uint8_t *config_find_option(struct uci_section *s, uint8_t *name)
+uint8_t *config_find_option(struct uci_section *s, const uint8_t *name)
 {
-	uint8_t *option;
-
-	option = uci_lookup_option_string(c, s, name);	
-
-	return option;
+	return (uint8_t *)uci_lookup_option_string(c, s, name);	
 }
 
 bool parse_mac(void *ptr, const char *val, bool is_list)
@@ -92,7 +88,7 @@ bool parse_mac(void *ptr, const char *val, bool is_list)
 }
 
 
-uint8_t config_load_mac_list(struct uci_section *s, uint8_t *name, void *list){
+static uint8_t config_load_mac_list(struct uci_section *s, uint8_t *name, void *list){
 	uint8_t length = 0;
 	struct uci_option *o;
 	struct uci_element *e;
@@ -113,7 +109,7 @@ uint8_t config_load_mac_list(struct uci_section *s, uint8_t *name, void *list){
 	return length;
 }
 
-bool load_tc_if_config(struct uci_section *s, void *data)
+static bool load_tc_if_config(struct uci_section *s, void *data)
 {
 	struct tc_if_config *config = (struct tc_if_config *)data;
 	uint8_t *ret = NULL;
@@ -185,6 +181,6 @@ bool xcostc_load_config(void *data)
 		if (load_tc_if_config(s, config)) 
 			list_add_tail((struct list_head *)config, (struct list_head *)data);
 		else
-			free(config);
+			free(config); 
 	}
 }

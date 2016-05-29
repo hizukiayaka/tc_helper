@@ -28,8 +28,9 @@ void config_cleanup();
 
 void *config_find_interface(uint8_t *ifname); 
 
-uint8_t *config_find_option(struct uci_section *s, uint8_t *name);
+uint8_t *config_find_option(struct uci_section *s, const uint8_t *name);
 
 uint8_t config_find_list(struct uci_section *s, uint8_t *name, uint8_t **list);
 
+bool xcostc_load_config(void *data);
 #endif
