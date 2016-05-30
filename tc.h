@@ -4,4 +4,5 @@
 
 int8_t tc_init(void *data);
 int8_t tc_add_exception(void *data);
+void tc_stop(void *data);
 #endif

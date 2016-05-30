@@ -10,6 +10,17 @@
 	} \
 	while(0)
 
+void tc_stop(void *data)
+{
+	struct tc_if_config *config = (struct tc_if_config *)data;
+
+	if (NULL == config)
+		return;
+
+	EXEC_STRING("tc qdisc del dev %s root", config->out_if);
+	EXEC_STRING("tc qdisc del dev %s root", config->in_if);
+}
+
 int8_t tc_init(void *data)
 {
 	struct tc_if_config *config = (struct tc_if_config *)data;
@@ -18,6 +29,8 @@ int8_t tc_init(void *data)
 	uint16_t subnet;
 	uint8_t *subnet4_addr;
 
+	if (NULL == config)
+		return -1;
 	/* FIXME caluate netmask and subnet here */
 
 	/* The class id and handle can't be zero and 1 as the defualt class*/
@@ -73,7 +86,8 @@ int8_t tc_add_exception(void *data)
 	struct xcostc_mac *ptr, *tmp;
 	struct list_head *head;
 
-	
+	if (NULL == config)
+		return -1;
 	/* FIXME this way only work for the download traffic control,
 	 * as we do that in the lan side
 	 */
