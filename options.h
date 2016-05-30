@@ -13,10 +13,10 @@ struct tc_if_config {
 	struct list_head list;
 	uint8_t *out_if;
 	uint8_t *in_if;
-	uint8_t ip4_start;
-	uint8_t ip4_end;
-	uint8_t upload_percent;
-	uint8_t download_percent;
+	uint32_t ip4_start;
+	uint32_t ip4_end;
+	uint32_t upload_percent;
+	uint32_t download_percent;
 	uint32_t upload_rate;
 	uint32_t download_rate;
 	struct list_head white_list;
