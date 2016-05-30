@@ -6,6 +6,8 @@ int main(int argc, char **argv)
 {
 	struct tc_if_config *data, *tmp;
 	struct list_head *cur, *nex_tmp;
+
+	PDEBUG("Loading configure\n");
 	LIST_HEAD(config_list);
 	xcostc_load_config(&config_list);
 
@@ -15,6 +17,7 @@ int main(int argc, char **argv)
 		tc_add_exception(data);
 	}
 
+	PDEBUG("clean up\n");
 	/* Free the allocated memory*/
 	list_for_each_entry_safe(data, tmp, &config_list, list)
 	{
@@ -26,9 +29,10 @@ int main(int argc, char **argv)
 	}
 	list_for_each_safe(cur, nex_tmp, &config_list)
 	{
-
 		free(cur);	
 	}
 
 	config_cleanup();
+
+	return 0;
 }

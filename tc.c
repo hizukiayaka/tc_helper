@@ -3,9 +3,10 @@
 #include "options.h"
 
 #define EXEC_STRING(template, args...) \
-	do {uint8_t buf[200]; \
+	do {uint8_t buf[200]; uint8_t ret;\
 	snprintf(buf, sizeof(buf), template, ## args); \
-	system(buf); \
+	ret = system(buf); \
+	PDEBUG("%s return %d\n", buf, ret); \
 	} \
 	while(0)
 
