@@ -94,9 +94,12 @@ int8_t tc_add_exception(void *data)
 	list_for_each_entry_safe(ptr, tmp, &config->white_list, list) {
 		mac = &(ptr->mac);
 		EXEC_STRING(
-		"tc filter add dev %s parent 1: protocol ip prio 3 u32 match u16 0x0800 0xFFFF at -2  \
-		match u32 0x%X%X%X%X 0xFFFFFFFF at -12 match u16 0x%X%X 0xFFFF at -14 flowid 1:1",
-		config->in_if, mac->ether_addr_octet[2], mac->ether_addr_octet[3],
+		"tc filter add dev %s parent 1: protocol ip prio 3 u32 \
+		match u16 0x0800 0xFFFF at -2 \
+		match u32 0x%02X%02X%02X%02X 0xFFFFFFFF at -12 \
+		match u16 0x%02X%02X 0xFFFF at -14 flowid 1:1",
+		config->in_if, mac->ether_addr_octet[2], 
+		mac->ether_addr_octet[3],
 		mac->ether_addr_octet[4], mac->ether_addr_octet[5], 
 		mac->ether_addr_octet[0], mac->ether_addr_octet[1]);
 	}
