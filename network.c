@@ -45,7 +45,7 @@ int32_t network_ipv4_subnet(char *if_name){
 			subnet = ipv4_addr->sin_addr.s_addr 
 				& (~mask.s_addr);
 
-			subnet = subnet >> 16;
+			subnet = subnet / 256;
 
 			freeifaddrs(ifaddr);
 
