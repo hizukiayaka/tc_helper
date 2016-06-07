@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include "libubox/list.h"
 
-#ifdef DEBUG
+#ifdef XCOSTC_DEBUG
 #define PDEBUG(fmt, args...)	fprintf(stderr, fmt, ## args)
 #else
 #define PDEBUG(fmt, args...)
