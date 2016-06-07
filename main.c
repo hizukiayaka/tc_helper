@@ -73,6 +73,7 @@ static int32_t
 usage(void)
 {
 	fprintf(stderr, "xcostc {start|stop|restart}");
+	fprintf(stderr, "\n");
 	return 1;
 }
 
