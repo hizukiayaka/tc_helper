@@ -145,8 +145,7 @@ static bool load_tc_if_config(struct uci_section *s, void *data)
 	INIT_LIST_HEAD(&config->white_list);
 	config_load_mac_list(s, "white_mac", &config->white_list);
 
-	if (NULL == config->out_if || NULL == config->in_if
-	   || 0 >= config->ip4_start || 0 >= config->ip4_end)
+	if (NULL == config->out_if || NULL == config->in_if)
 		return false;
 
 	if (0 >= config->download_rate)
