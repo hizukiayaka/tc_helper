@@ -47,15 +47,16 @@ int8_t tc_init(void *data)
 		config->out_if, subnet);
 
 	rate = config->upload_rate * config->upload_percent / 100;
-	EXEC_STRING("tc class add dev %s parent 1: classid 1:%d  hfsc sc rate %dkbit ul rate %dkbit",
+	EXEC_STRING("tc class add dev %s parent 1: classid 1:%d  hfsc ls m2 %dkbit ul m2 %dkbit",
 		config->out_if, subnet, rate, rate);
 	EXEC_STRING("tc qdisc add dev %s parent 1:%d handle %d: fq_codel",
 		config->out_if, subnet, subnet);
 	EXEC_STRING("tc filter add dev %s parent %d: handle %d protocol all flow hash keys nfct-src divisor %d",
 		config->out_if, subnet, subnet, netsize);
 
-	EXEC_STRING("tc class add dev %s  parent 1: classid 1:1 hfsc sc rate %dkbit ul rate %dkbit",
-		config->out_if, config->upload_rate, config->upload_rate);
+	rate = config->upload_rate * (100 - config->upload_percent) / 100;
+	EXEC_STRING("tc class add dev %s  parent 1: classid 1:1 hfsc ls m2 %dkbit",
+		config->out_if, rate);
 	EXEC_STRING("tc filter add dev %s parent 1: protocol arp prio 2 u32 match u32 0 0 flowid 1:1",
 		config->out_if);
 
@@ -64,15 +65,16 @@ int8_t tc_init(void *data)
 		config->in_if, subnet);
 
 	rate = config->download_rate * config->download_percent / 100;
-	EXEC_STRING("tc class add dev %s parent 1: classid 1:%d  hfsc sc rate %dkbit ul rate %dkbit",
+	EXEC_STRING("tc class add dev %s parent 1: classid 1:%d  hfsc ls m2 %dkbit ul m2 %dkbit",
 		config->in_if, subnet, rate, rate);
 	EXEC_STRING("tc qdisc add dev %s parent 1:%d handle %d: fq_codel",
 		config->in_if, subnet, subnet);
 	EXEC_STRING("tc filter add dev %s parent %d: handle %d protocol all flow map key dst addend -%s divisor %d",
 		config->in_if, subnet, subnet, subnet4_addr, netsize);
 
-	EXEC_STRING("tc class add dev %s  parent 1: classid 1:1 hfsc sc rate %dkbit ul rate %dkbit",
-		config->in_if, config->download_rate, config->download_rate);
+	rate = config->download_rate * (100 - config->download_percent) / 100;
+	EXEC_STRING("tc class add dev %s  parent 1: classid 1:1 hfsc ls m2 %dkbit",
+		config->in_if, rate);
 	EXEC_STRING("tc filter add dev %s parent 1: protocol arp prio 1 u32 match u32 0 0 flowid 1:1",
 		config->in_if);
 
